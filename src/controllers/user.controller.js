@@ -3,6 +3,25 @@ const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
+const appConfig = require('../config/appConfig');
+
+// Internal utility functions to generate JWT tokens
+
+const generateAccessAndRefreshTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new ApiError(404, 'User not found');
+        }
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+        user.refreshToken = refreshToken;
+        await user.save({ validateBeforeSave: false });
+        return { accessToken, refreshToken };
+    } catch (error) {
+        throw new ApiError(500, 'Failed to generate tokens');
+    }
+}
 
 //@Desc: Register a new user with optional avatar and cover image
 //@Route: POST /api/v1/users/register
@@ -93,14 +112,38 @@ const loginUser = asyncHandler(async (req, res) => {
     if(!isPasswordValid) {
         throw new ApiError(401, 'Invalid credentials');
     }
-    res.status(200).json(new ApiResponse(200, {user}, 'User logged in successfully'));
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+    const loggedInUser = await User.findById(user._id).select('-password -refreshToken');
+    const cookieOptions = {
+        httpOnly: true,
+        secure: appConfig.nodeEnv === 'production',
+        sameSite: 'Strict',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    };
+    res
+    .status(200)
+    .cookie('accessToken', accessToken, cookieOptions)
+    .cookie('refreshToken', refreshToken, cookieOptions)
+    .json(new ApiResponse(200, {loggedInUser, accessToken, refreshToken}, 'User logged in successfully'));
 });
 
 //@Desc: Logout user and clear tokens
 //@Route: POST /api/v1/users/logout
 //@Access: Public
 
-const logoutUser = asyncHandler(async (req, res) => {});
+const logoutUser = asyncHandler(async (req, res) => {
+    await User.findOneAndUpdate(
+        { _id: req.user._id },
+        { refreshToken: null },
+        { new: true }
+    );
+
+    const cookieOptions = {
+        httpOnly: true,
+        secure: appConfig.nodeEnv === 'production',
+        sameSite: 'Strict',
+    };
+});
 
 //@Desc: Refresh acces token with refresh token
 //@Route: POST /api/v1/users/refesh-token
