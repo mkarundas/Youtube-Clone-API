@@ -120,7 +120,7 @@ const loginUser = asyncHandler(async (req, res) => {
         sameSite: 'Strict',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     };
-    res
+    return res
     .status(200)
     .cookie('accessToken', accessToken, cookieOptions)
     .cookie('refreshToken', refreshToken, cookieOptions)
@@ -132,6 +132,8 @@ const loginUser = asyncHandler(async (req, res) => {
 //@Access: Public
 
 const logoutUser = asyncHandler(async (req, res) => {
+    console.log(req.cookies);
+    console.log(req.headers);
     await User.findOneAndUpdate(
         { _id: req.user._id },
         { refreshToken: null },
@@ -143,6 +145,12 @@ const logoutUser = asyncHandler(async (req, res) => {
         secure: appConfig.nodeEnv === 'production',
         sameSite: 'Strict',
     };
+
+    return res
+    .status(200)
+    .cookie('accessToken', cookieOptions)
+    .cookie('refreshToken', cookieOptions)
+    .json(new ApiResponse(200, {}, 'User logged out successfully'));
 });
 
 //@Desc: Refresh acces token with refresh token

@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const { registerUser,
     loginUser,
     logoutUser,
@@ -12,8 +13,8 @@ const { registerUser,
     getUserWatchHistory,
     requestPasswordReset,
     resetPassword } = require('../controllers/user.controller');
-    const upload = require('../middlewares/multer.middleware');
-
+const upload = require('../middlewares/multer.middleware');
+const verifyJWT = require('../middlewares/auth.middleware');
 const userRouter = express.Router();
 
 // Public routes
@@ -28,6 +29,7 @@ userRouter.post('/request-password-reset', requestPasswordReset);
 userRouter.post('/reset-password', resetPassword); 
 
 // Protected routes
+userRouter.use(verifyJWT); // Apply JWT verification middleware to all routes below
 userRouter.post('/logout', logoutUser);
 userRouter.get('/current-user', getCurrentUser);
 userRouter.patch('/change-password', changePassword);
