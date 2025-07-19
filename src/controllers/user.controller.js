@@ -4,6 +4,7 @@ const ApiResponse = require('../utils/ApiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const appConfig = require('../config/appConfig');
+const jwt = require("jsonwebtoken");
 
 // Internal utility functions to generate JWT tokens
 
@@ -157,14 +158,59 @@ const logoutUser = asyncHandler(async (req, res) => {
 //@Route: POST /api/v1/users/refesh-token
 //@Access: Public
 
-const refreshAccessToken = asyncHandler(async (req, res) => {});
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    const refreshToken = req.cookies.refreshToken || req.headers('authorization')?.replace('Bearer ', '');
+    if (!refreshToken) {
+        throw new ApiError(401, 'Refresh token is required');
+    }
+
+    const decodedToken = jwt.verify(refreshToken, appConfig.refreshTokenSecret);
+    if (!decodedToken) {
+        throw new ApiError(401, 'Invalid refresh token');
+    }
+
+    const user = await User.findById(decodedToken._id).select('-password');
+    if (!user || user.refreshToken !== refreshToken) {
+        throw new ApiError(401, 'Invalid refresh token');
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
+    const cookieOptions = {
+        httpOnly: true,
+        secure: appConfig.nodeEnv === 'production',
+        sameSite: 'Strict',
+    }
+
+    return res
+    .status(200)
+    .cookie('accessToken', accessToken, cookieOptions)
+    .cookie('refreshToken', newRefreshToken, cookieOptions)
+    .json(new ApiResponse(200, {accessToken, refreshToken}, 'Access token refreshed successfully'));
+});
 
 
 //@Desc: Change user password
 //@Route: POST /api/v1/users/change-password
 //@Access: Private
 
-const changePassword = asyncHandler(async (req, res) => {});
+const changePassword = asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        throw new ApiError(400, 'Current and new passwords are required');
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+        throw new ApiError(404, 'User not found');
+    }
+    const isPasswordValid = await user.comparePassword(currentPassword);
+    if (!isPasswordValid) {
+        throw new ApiError(400, 'Current password is incorrect');
+    }
+    user.password = newPassword;
+    await user.save({ validateBeforeSave: false });
+    return res.status(200).json(new ApiResponse(200, {}, 'Password changed successfully'));
+});
 
 //@Desc: Get current user profile
 //@Route: GET /api/v1/users/current
