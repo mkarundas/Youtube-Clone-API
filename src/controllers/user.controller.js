@@ -145,12 +145,14 @@ const logoutUser = asyncHandler(async (req, res) => {
         httpOnly: true,
         secure: appConfig.nodeEnv === 'production',
         sameSite: 'Strict',
+        path: '/',
+        expires: new Date(0)
     };
 
     return res
     .status(200)
-    .cookie('accessToken', cookieOptions)
-    .cookie('refreshToken', cookieOptions)
+    .clearCookie('accessToken', cookieOptions)
+    .clearCookie('refreshToken', cookieOptions)
     .json(new ApiResponse(200, {}, 'User logged out successfully'));
 });
 
@@ -216,14 +218,36 @@ const changePassword = asyncHandler(async (req, res) => {
 //@Route: GET /api/v1/users/current
 //@Access: Private
 
-const getCurrentUser = asyncHandler(async (req, res) => {});
+const getCurrentUser = asyncHandler(async (req, res) => {
+    return res.status(200).json(new ApiResponse(200, req.user, 'Current user profile retrieved successfully')); 
+});
 
 
 //@Desc: Update user profile details
 //@Route: PATCH /api/v1/users/current
 //@Access: Private
 
-const updateAccountDetails = asyncHandler(async (req, res) => {});
+const updateAccountDetails = asyncHandler(async (req, res) => {
+    const { fullName, email } = req.body;
+    if(!fullName && !email) {
+        throw new ApiError(400, 'Full name or email are required');
+    }
+    const user = await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                fullName: fullName || req.user.fullName,
+                email: email || req.user.email
+            },
+        }  ,
+        { new: true, runValidators: true }
+    )
+    .select('-password -refreshToken');
+    if(!user) {
+        throw new ApiError(404, 'User not found');
+    }
+    return res.status(200).json(new ApiResponse(200, user, 'User account details updated successfully'));
+});
 
 //@Desc: Update user's avatar
 //@Route: PATCH /api/v1/users/avatar
